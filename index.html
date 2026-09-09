@@ -22,7 +22,7 @@
   :root{
     --bg:#05070f; --bg2:#0b1020; --card:#0f1628; --card-hi:#16203a;
     --line:#1f2c4d; --txt:#eaf2ff; --muted:#6f7fa6;
-    --cyan:#00f0ff; --violet:#7c4dff; --pink:#ff2bd6; --amber:#fbbf24;
+    --cyan:#00f0ff; --violet:#7c4dff; --pink:#ff2bd6; --amber:#fbbf24; --green:#4ade80;
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{background:var(--bg);}
@@ -96,6 +96,7 @@
   .caldot.r1{background:var(--violet);}
   .caldot.r2{background:var(--pink);}
   .caldot.r3{background:var(--amber);}
+  .caldot.r4{background:var(--green);}
   .calcell.selected .caldot{background:rgba(5,7,15,.7) !important;}
   .callegend{display:flex;gap:10px;justify-content:center;margin-top:14px;padding-top:12px;
     border-top:1px dashed var(--line);flex-wrap:wrap;}
@@ -162,10 +163,13 @@
 
   /* Tabs */
   .tabs{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-bottom:18px;}
-  .tab{appearance:none;border:1px solid var(--line);background:var(--card);
+  .tab{position:relative;appearance:none;border:1px solid var(--line);background:var(--card);
     color:var(--muted);border-radius:16px;padding:15px 10px;cursor:pointer;
     font-family:'Anton',sans-serif;letter-spacing:1.5px;font-size:1.45rem;line-height:1;
     text-transform:uppercase;transition:all .18s ease;text-align:center;}
+  .tab.wide{grid-column:1 / -1;}
+  .tab .flag{position:absolute;top:10px;right:12px;width:9px;height:9px;border-radius:50%;
+    background:transparent;transition:all .2s ease;}
   .tab small{display:block;font-family:'Archivo';font-weight:800;font-size:.58rem;letter-spacing:3px;margin-top:5px;opacity:.65;}
   .tab.active{color:#05070f;border-color:transparent;
     background:linear-gradient(135deg,var(--cyan),var(--violet));
@@ -193,7 +197,17 @@
     color:transparent;font-weight:900;transition:all .2s ease;}
   .ex.done .check{background:var(--violet);border-color:var(--violet);color:#fff;}
 
+  .panel.cardio .ex{border-left-color:var(--green);}
+  .panel.cardio .num{color:var(--green);}
+  .panel.cardio .reps b{color:var(--green);}
+
   .foot{text-align:center;color:var(--muted);font-size:.7rem;letter-spacing:3px;text-transform:uppercase;margin-top:24px;font-weight:700;}
+  .daysum{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:9px;min-height:20px;}
+  .chip{display:inline-flex;align-items:center;gap:5px;background:var(--card);
+    border:1px solid var(--line);border-radius:999px;padding:4px 10px;
+    font-size:.6rem;font-weight:900;letter-spacing:1.8px;text-transform:uppercase;color:var(--txt);}
+  .chip i{width:6px;height:6px;border-radius:50%;display:inline-block;font-style:normal;}
+  .chip.none{color:var(--muted);border-style:dashed;}
   .reset{background:none;border:1px solid var(--line);color:var(--muted);
     border-radius:11px;padding:9px 18px;font-family:'Archivo';font-weight:700;
     letter-spacing:2px;cursor:pointer;margin-top:12px;font-size:.74rem;text-transform:uppercase;}
@@ -225,7 +239,9 @@
 
   <div class="foot">
     <div id="progress">0 / 0 done</div>
-    <button class="reset" id="reset">Reset This Day</button>
+    <div class="daysum" id="daySummary"></div>
+    <button class="reset" id="reset">Reset This Routine</button>
+    <button class="reset" id="resetAll">Clear Whole Day</button>
   </div>
 
   <section class="stats">
@@ -296,6 +312,7 @@
       <span class="legitem"><span class="legdot" style="background:#7c4dff"></span>Quad</span>
       <span class="legitem"><span class="legdot" style="background:#ff2bd6"></span>Pull</span>
       <span class="legitem"><span class="legdot" style="background:#fbbf24"></span>Push</span>
+      <span class="legitem"><span class="legdot" style="background:#4ade80"></span>Cardio</span>
     </div>
     <div class="sheetbtns">
       <button class="sheetcancel" id="closeCal">Close</button>
@@ -325,8 +342,13 @@ const ROUTINES = [
     ["Wide Grip Lat Pulldown","8"],["Standing Dumbbell Lat Raises","12"],
     ["Cable Crossovers (Chest)","8"],["Tricep Skullcrushers","12"],["Tricep Extension","15"],
   ]},
+  { name:"Cardio", tag:"Conditioning", cardio:true, ex:[
+    ["Treadmill Run","20 min"],["Incline Treadmill Walk","25 min"],["Outdoor Run","5 km"],
+    ["Rowing Machine","2000 m"],["Assault Bike","15 min"],["Stairmaster","15 min"],
+    ["Cross Trainer","20 min"],["Skipping","3 min × 5"],
+  ]},
 ];
-const ROUTINE_COLORS=['#00f0ff','#7c4dff','#ff2bd6','#fbbf24'];
+const ROUTINE_COLORS=['#00f0ff','#7c4dff','#ff2bd6','#fbbf24','#4ade80'];
 
 const STORE='tdog-v2';
 let state={workouts:{},body:{}};
@@ -356,22 +378,24 @@ const panelsEl=document.getElementById('panels');
 const progressEl=document.getElementById('progress');
 let active=0;
 
+const lastIsOdd=ROUTINES.length%2===1;
 ROUTINES.forEach((r,i)=>{
   const t=document.createElement('button');
-  t.className='tab'+(i===0?' active':'');
-  t.innerHTML=r.name+'<small>'+r.tag+'</small>';
+  t.className='tab'+(i===0?' active':'')+(lastIsOdd&&i===ROUTINES.length-1?' wide':'');
+  t.innerHTML='<span class="flag"></span>'+r.name+'<small>'+r.tag+'</small>';
   t.onclick=()=>select(i);
   tabsEl.appendChild(t);
 
   const p=document.createElement('div');
-  p.className='panel'+(i===0?' active':'');
+  p.className='panel'+(i===0?' active':'')+(r.cardio?' cardio':'');
   r.ex.forEach((e,j)=>{
     const key=i+'-'+j;
     const row=document.createElement('div');
     row.className='ex';row.dataset.key=key;
+    const detail=r.cardio?'<b>'+e[1]+'</b> · pace / notes: ___':'<b>'+e[1]+'</b> reps · weight: ___';
     row.innerHTML='<div class="num">'+(j+1)+'</div>'+
       '<div class="info"><div class="name">'+e[0]+'</div>'+
-      '<div class="reps"><b>'+e[1]+'</b> reps · weight: ___</div></div>'+
+      '<div class="reps">'+detail+'</div></div>'+
       '<div class="check">✓</div>';
     row.onclick=()=>{
       const k=curKey();
@@ -380,7 +404,7 @@ ROUTINES.forEach((r,i)=>{
       if(next)state.workouts[k][key]=true;else delete state.workouts[k][key];
       if(Object.keys(state.workouts[k]).length===0)delete state.workouts[k];
       row.classList.toggle('done',next);
-      save();updateProgress();updateDateDots();
+      save();updateProgress();updateDateDots();updateTabFlags();updateDaySummary();
     };
     p.appendChild(row);
   });
@@ -390,16 +414,39 @@ function select(i){
   active=i;
   document.querySelectorAll('.tab').forEach((t,k)=>t.classList.toggle('active',k===i));
   document.querySelectorAll('.panel').forEach((p,k)=>p.classList.toggle('active',k===i));
-  updateProgress();
+  updateProgress();updateTabFlags();
 }
 function refreshExercises(){
   const day=state.workouts[curKey()]||{};
   document.querySelectorAll('.ex').forEach(ex=>ex.classList.toggle('done',!!day[ex.dataset.key]));
-  updateProgress();updateDateDots();
+  updateProgress();updateDateDots();updateTabFlags();updateDaySummary();
 }
 function updateProgress(){
   const p=document.querySelectorAll('.panel')[active];
-  progressEl.textContent=p.querySelectorAll('.ex.done').length+' / '+p.querySelectorAll('.ex').length+' done';
+  progressEl.textContent=ROUTINES[active].name.toUpperCase()+' — '+
+    p.querySelectorAll('.ex.done').length+' / '+p.querySelectorAll('.ex').length+' done';
+  document.getElementById('reset').textContent='Reset '+ROUTINES[active].name;
+}
+function updateTabFlags(){
+  const logged=routinesForDay(curKey());
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    const f=t.querySelector('.flag');
+    if(!f)return;
+    if(!logged.has(i)){f.style.background='transparent';f.style.boxShadow='none';return;}
+    const on=i===active;
+    f.style.background=on?'#05070f':ROUTINE_COLORS[i];
+    f.style.boxShadow=on?'none':'0 0 8px '+ROUTINE_COLORS[i];
+  });
+}
+function updateDaySummary(){
+  const day=state.workouts[curKey()]||{};
+  const el=document.getElementById('daySummary');
+  const parts=[];
+  ROUTINES.forEach((r,i)=>{
+    const n=Object.keys(day).filter(k=>parseInt(k.split('-')[0],10)===i).length;
+    if(n)parts.push('<span class="chip"><i style="background:'+ROUTINE_COLORS[i]+'"></i>'+r.name+' '+n+'/'+r.ex.length+'</span>');
+  });
+  el.innerHTML=parts.length?parts.join(''):'<span class="chip none">Nothing logged</span>';
 }
 document.getElementById('reset').onclick=()=>{
   const k=curKey();
@@ -409,6 +456,12 @@ document.getElementById('reset').onclick=()=>{
     save();
   }
   refreshExercises();
+};
+document.getElementById('resetAll').onclick=()=>{
+  const k=curKey();
+  if(!state.workouts[k])return;
+  if(!confirm('Clear every routine logged on '+fmtDate(currentDate)+'?'))return;
+  delete state.workouts[k];save();refreshExercises();
 };
 
 // Date UI
@@ -422,7 +475,7 @@ function updateDateUI(){
 function updateDateDots(){
   const routines=routinesForDay(curKey());
   let html='';
-  [0,1,2,3].forEach(r=>{if(routines.has(r))html+='<span class="ddot" style="background:'+ROUTINE_COLORS[r]+'"></span>';});
+  ROUTINES.forEach((_,r)=>{if(routines.has(r))html+='<span class="ddot" style="background:'+ROUTINE_COLORS[r]+'"></span>';});
   dateDots.innerHTML=html;
 }
 function changeDate(delta){currentDate.setDate(currentDate.getDate()+delta);onDateChange();}
@@ -454,7 +507,7 @@ function renderCal(){
     let dots='';
     if(routines.size){
       dots='<div class="caldots">';
-      [0,1,2,3].forEach(r=>{if(routines.has(r))dots+='<span class="caldot r'+r+'"></span>';});
+      ROUTINES.forEach((_,r)=>{if(routines.has(r))dots+='<span class="caldot r'+r+'"></span>';});
       dots+='</div>';
     }
     const isT=dt.getTime()===today.getTime();
